@@ -130,7 +130,10 @@ def attendIMG(sDialog, parameters):
                 toSend = f'OK{imgParams.imgQty}\r\n'.encode('us-ascii')
             else:
                 img = apiRequest(date1)
-                toSend = "OK".encode('us-ascii') + str(len(img)).encode('us-ascii') + ENCODED_HASH + img + "\r\n".encode('us-ascii')
+#                toSend = "OK".encode('us-ascii') + str(len(img)).encode('us-ascii') + ENCODED_HASH + img + "\r\n".encode('us-ascii')
+                toSend = "OK".encode('us-ascii') + str(len(img)).encode('us-ascii') + ENCODED_HASH + img
+            
+            print(toSend)
             sDialog.sendall(toSend)
             print("enviado")
         except ValueError:
