@@ -4,8 +4,10 @@ from datetime import datetime, date, timedelta
 
 API_URL = "https://api.nasa.gov/planetary/apod?api_key=TgLGqLIjepX9U4s5HQHots13dt2TCoDGElpE1Gzd"
 DEFAULT_IMG_URL = "https://apod.nasa.gov/apod/image/9904/surv3_apollo12_big.jpg"
-ENCODED_HASH = '#'.encode('us-ascii')
+CODIFICATION = 'us-ascii'
+ENCODED_HASH = '#'.encode(CODIFICATION)
 MIN_DATE = datetime.strptime("19950615000000", "%Y%m%d%H%M%S")
+PORT = 6002
 
 class ImgParams:
     def __init__(self):
@@ -18,13 +20,12 @@ imgParams = ImgParams()
 
 def main():
     sListen = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sListen.bind(('', 6002))
+    sListen.bind(('', PORT))
     sListen.listen(5)
     signal.signal(signal.SIGCHLD, signal.SIG_IGN)
 
     while True:
         dialog, dir_cli = sListen.accept()
-        print("conexion establecida")
         if os.fork():
             dialog.close()
         else:
@@ -33,8 +34,8 @@ def main():
             exit(0)
 
 def attendClient(sDialog):
-    crlf = "\r\n".encode('us-ascii')
-    msg = "".encode('us-ascii')
+    crlf = "\r\n".encode(CODIFICATION)
+    msg = "".encode(CODIFICATION)
     while True:
         buf = sDialog.recv(1024)
         if not buf:
@@ -42,10 +43,9 @@ def attendClient(sDialog):
         msg += buf
         while crlf in msg:
             msgSplit = msg.split(crlf)
-            print(msg)
-            attendRequest(sDialog, msgSplit[0].decode('us-ascii'))
+            attendRequest(sDialog, msgSplit[0].decode(CODIFICATION))
             msg = crlf.join(
-                msgSplit[1:]) if len(msgSplit) > 1 else "".encode('us-ascii')
+                msgSplit[1:]) if len(msgSplit) > 1 else "".encode(CODIFICATION)
     sDialog.close()
 
 def attendRequest(sDialog, request):
@@ -69,7 +69,7 @@ def getImage(justOneImg):
     #Solamente el hash entre el tamaño y la imagen porque ya se sabe lo que mide el campo de la imagen 
     image = apiRequest(imgParams.imgStart, justOneImg)
     imgParams.imgStart += timedelta(days=1)
-    return str(len(image)).encode('us-ascii') + ENCODED_HASH + image 
+    return str(len(image)).encode(CODIFICATION) + ENCODED_HASH + image 
     
 def attendDIR(parameters):
     toSend = b''
@@ -90,6 +90,14 @@ def attendDIR(parameters):
             toSend = getError(5)
     return toSend
 
+def attendTME(parameters):
+    toSend = b''
+    if len(parameters) != 14:
+        toSend = getError(5)
+    else:
+        toSend = mapDateToDir(parameters)
+    return toSend
+
 def attendIMG(parameters):
     value = re.match('^(\d{14})$|^(\d{28})$', parameters)
     if value:
@@ -106,10 +114,10 @@ def attendIMG(parameters):
                 imgParams.imgStart,imgParams.imgEnd = (date1,date2) if deltaDate.total_seconds() < 0 else (date2,date1)
                 imgParams.imgQty = qty
                 imgParams.imgSent = True
-                toSend = f'OK{imgParams.imgQty}\r\n'.encode('us-ascii')
+                toSend = f'OK{imgParams.imgQty}\r\n'.encode(CODIFICATION)
             else:
                 img = apiRequest(date1, True)
-                toSend = "OK".encode('us-ascii') + str(len(img)).encode('us-ascii') + ENCODED_HASH + img
+                toSend = "OK".encode(CODIFICATION) + str(len(img)).encode(CODIFICATION) + ENCODED_HASH + img
         except ValueError:
             #ERROR DE FORMATO
             toSend = getError(5)
@@ -131,19 +139,17 @@ def attendQTY(parameters):
     elif (int(parameters) < 0 and int(parameters) > imgParams.imgQty):
         toSend = getError(10)
     else:
-        toSend += "OK".encode('us-ascii')
+        toSend = "OK".encode(CODIFICATION)
         justOneImg = True if (int(parameters) == 1) else False
         for i in range(int(parameters)):
             toSend += getImage(justOneImg)
         if justOneImg:
-            toSend += "\r\n".encode('us-ascii')
+            toSend += "\r\n".encode(CODIFICATION)
     return toSend
 
-def attendTME(parameters):
-    return 'WORK IN PROGRESS'.encode('us-ascii')
 
 def getError(errorNum):
-    return f"ER{errorNum}\r\n".encode('us-ascii') 
+    return f"ER{errorNum}\r\n".encode(CODIFICATION) 
 
 def apiRequest(photoDate, justOneImg):
     toSend = b''
@@ -185,10 +191,10 @@ def mapDirToDate(declination, ascension):
         dayPool = (datetime.now() - MIN_DATE).days
         requestedDays = ((float(declination[:3] + '.' + declination[3:])) + 90) / 180 * dayPool
         requestedDate = MIN_DATE + timedelta(days=requestedDays, hours=requestedHours.hour, minutes=requestedHours.minute, seconds=requestedHours.minute)
-        if apiRequest(requestedDate, True).decode('us-ascii').startswith('ER'):
+        if apiRequest(requestedDate, True).decode(CODIFICATION).startswith('ER'):
             toSend = getError(6)
         else:
-            toSend = datetime.strftime(requestedDate, "OK%Y%m%d%H%M%S\r\n").encode('us-ascii')
+            toSend = datetime.strftime(requestedDate, "OK%Y%m%d%H%M%S\r\n").encode(CODIFICATION)
     except ValueError:
         toSend = getError(5)
     return toSend
@@ -197,7 +203,7 @@ def mapDateToDir(date):
     try:
         requestedDate = datetime.strptime(date, "%Y%m%d%H%M%S")
         deltaSeconds = (requestedDate - MIN_DATE).total_seconds()
-        if deltaSeconds < 0 or requestedDate > datetime.now() or apiRequest(requestedDate, True).decode('us-ascii').startswith('ER'):
+        if deltaSeconds < 0 or requestedDate > datetime.now() or apiRequest(requestedDate, True).decode(CODIFICATION).startswith('ER'):
             toSend = getError(7)
         else:
             ascension = date[8:]
@@ -207,7 +213,7 @@ def mapDateToDir(date):
             declination = ('+' if degrees >= 0 else '') + str(round(degrees,2)).replace('.','')
             if len(declination) < 5:
                 declination += '0'
-            toSend = (declination[:5] + ascension).encode('us-ascii')
+            toSend = (declination[:5] + ascension).encode(CODIFICATION)
     except ValueError:
         toSend = getError(5)
     return toSend
