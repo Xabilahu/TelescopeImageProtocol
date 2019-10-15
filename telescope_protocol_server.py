@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import socket, os, signal, re, requests, json
 from datetime import datetime, date, timedelta
 
@@ -51,12 +52,12 @@ def attendRequest(sDialog, request):
     command = request[:3]
     parameters = request[3:]
     toSend = b''
-    if command == 'DIR':  #Y = (X-A)/(B-A) * (D-C) + C mapping de los valores del rango (a,b) a (c,d)
+    if command == 'DIR': 
         toSend = attendDIR(parameters)
     elif command == 'TME':
         toSend = attendTME(parameters)
     elif command == 'IMG':
-        toSend = attendIMG(parameters) #DONE
+        toSend = attendIMG(parameters)
     elif command == 'QTY':
         toSend = attendQTY(parameters)
     else:
@@ -166,6 +167,11 @@ def apiRequest(photoDate, justOneImg):
                     toSend = getError(9)
                 else:
                     toSend = getError(11)
+        else:
+            if justOneImg:
+                toSend = getError(9)
+            else:
+                toSend = getError(11)
     else:
         if justOneImg:
             toSend = getError(8)
@@ -179,7 +185,10 @@ def mapDirToDate(declination, ascension):
         dayPool = (datetime.now() - MIN_DATE).days
         requestedDays = ((float(declination[:3] + '.' + declination[3:])) + 90) / 180 * dayPool
         requestedDate = MIN_DATE + timedelta(days=requestedDays, hours=requestedHours.hour, minutes=requestedHours.minute, seconds=requestedHours.minute)
-        toSend = datetime.strftime(requestedDate, "OK%Y%m%d%H%M%S\r\n").encode('us-ascii')
+        if apiRequest(requestedDate, True).decode('us-ascii').startswith('ER'):
+            toSend = getError(6)
+        else:
+            toSend = datetime.strftime(requestedDate, "OK%Y%m%d%H%M%S\r\n").encode('us-ascii')
     except ValueError:
         toSend = getError(5)
     return toSend
@@ -188,7 +197,7 @@ def mapDateToDir(date):
     try:
         requestedDate = datetime.strptime(date, "%Y%m%d%H%M%S")
         deltaSeconds = (requestedDate - MIN_DATE).total_seconds()
-        if deltaSeconds < 0 or requestedDate > datetime.now():
+        if deltaSeconds < 0 or requestedDate > datetime.now() or apiRequest(requestedDate, True).decode('us-ascii').startswith('ER'):
             toSend = getError(7)
         else:
             ascension = date[8:]
@@ -198,9 +207,10 @@ def mapDateToDir(date):
             declination = ('+' if degrees >= 0 else '') + str(round(degrees,2)).replace('.','')
             if len(declination) < 5:
                 declination += '0'
-            toSend = declination[:5] + ascension
+            toSend = (declination[:5] + ascension).encode('us-ascii')
     except ValueError:
         toSend = getError(5)
     return toSend
 
-main()
+if __name__ == "__main__":
+    main()
