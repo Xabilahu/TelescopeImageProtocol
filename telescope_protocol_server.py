@@ -13,7 +13,6 @@ class ImgParams:
         self.imgSent = False
         self.imgQty = None
 
-
 imgParams = ImgParams()
 
 def main():
