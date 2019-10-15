@@ -74,24 +74,23 @@ def getImage(justOneImg):
     imgParams.imgStart += timedelta(days=1)
     return str(len(image)).encode('us-ascii') + ENCODED_HASH + image 
     
-def attendDIR(dirParam):
+def attendDIR(parameters):
     toSend = b''
     #Comprobar tamano
-    if (len(dirParam)!=11):
-        getError(sDialog,5)
-    declination = dirParam[:5]  #5 digitos
-    ascension = dirParam[5:]  #6 digitos
-    if re.match('^[+-]\d{4}', declination) and re.match('^/d{6}', ascension):
-        numDec = float(declination[1:3] + '.' + declination[3:])
-        if numDec<0 and numDec>90:
-            toSend = getError(5)
-        try:
-            hour = datetime.strptime(ascension,'%H%M%S')
-        except ValueError:
-            toSend = getError(5)
-    else:
-        #ERROR
+    if (len(parameters)!=11):
         toSend = getError(5)
+    else :
+        declination = parameters[:5]  #5 digitos
+        ascension = parameters[5:]  #6 digitos
+        if re.match('[+-]\d{4}', declination) and re.match('/d{6}', ascension):
+            numDec = float(declination[1:3] + '.' + declination[3:])
+            if numDec < 0 and numDec > 90:
+                toSend = getError(5)
+            else:
+                toSend = mapDirToDate(declination, ascension)
+        else:
+            #ERROR
+            toSend = getError(5)
     return toSend
 
 def attendIMG(parameters):
@@ -176,6 +175,36 @@ def apiRequest(photoDate, justOneImg):
             toSend = getError(8)
         else:
             toSend = getError(11)
+    return toSend
+
+def mapDirToDate(declination, ascension):
+    try:
+        requestedHours = datetime.strptime(ascension,'%H%M%S')
+        dayPool = (datetime.now() - MIN_DATE).days
+        requestedDays = ((float(declination[:3] + '.' + declination[3:])) + 90) / 180 * dayPool
+        requestedDate = MIN_DATE + timedelta(days=requestedDays, hours=requestedHours.hour, minutes=requestedHours.minute, seconds=requestedHours.minute)
+        toSend = datetime.strftime(requestedDate, "OK%Y%m%d%H%M%S\r\n").encode('us-ascii')
+    except ValueError:
+        toSend = getError(5)
+    return toSend
+
+def mapDateToDir(date):
+    try:
+        requestedDate = datetime.strptime(date, "%Y%m%d%H%M%S")
+        deltaSeconds = (requestedDate - MIN_DATE).total_seconds()
+        if deltaSeconds < 0 or requestedDate > datetime.now():
+            toSend = getError(7)
+        else:
+            ascension = date[8:]
+            requestedDays = (requestedDate - MIN_DATE).days
+            maxDays = (datetime.now() - MIN_DATE).days
+            degrees = requestedDays / maxDays * 180 - 90
+            declination = ('+' if degrees >= 0 else '') + str(round(degrees,2)).replace('.','')
+            if len(declination) < 5:
+                declination += '0'
+            toSend = declination[:5] + ascension
+    except ValueError:
+        toSend = getError(5)
     return toSend
 
 main()
