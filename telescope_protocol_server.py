@@ -7,6 +7,8 @@ import json
 API_URL = "https://api.nasa.gov/planetary/apod?api_key=TgLGqLIjepX9U4s5HQHots13dt2TCoDGElpE1Gzd"
 DEFAULT_IMG_URL = "https://apod.nasa.gov/apod/image/9904/surv3_apollo12_big.jpg"
 ENCODED_HASH = '#'.encode('us-ascii')
+MIN_DATE = datetime.strptime("19950615000000", "%Y%m%d%H%M%S")
+
 class ImgParams:
     def __init__(self):
         self.imgEnd = None
@@ -33,7 +35,6 @@ def main():
             attendClient(dialog)
             exit(0)
 
-
 def attendClient(sDialog):
     crlf = "\r\n".encode('us-ascii')
     msg = "".encode('us-ascii')
@@ -50,68 +51,50 @@ def attendClient(sDialog):
                 msgSplit[1:]) if len(msgSplit) > 1 else "".encode('us-ascii')
     sDialog.close()
 
-
 def attendRequest(sDialog, request):
     command = request[:3]
     parameters = request[3:]
+    toSend = b''
     if command == 'DIR':  #Y = (X-A)/(B-A) * (D-C) + C mapping de los valores del rango (a,b) a (c,d)
-        dirParam = request[3:15]
-        attendDir(sDialog, dirParam)
-    elif command == 'TME':  #Jun 16, 1995 hasta hoy
-        pass
+        toSend = attendDIR(parameters)
+    elif command == 'TME':
+        toSend = attendTME(parameters)
     elif command == 'IMG':
-        toSend = attendIMG(sDialog,parameters) #DONE
+        toSend = attendIMG(parameters) #DONE
     elif command == 'QTY':
-        #Peti a la api
-        if not imgParams.imgSent:
-            sendError(sDialog, 1)  #not previous query for IMG
-        elif not parameters:
-            sendError(sDialog, 4)  #no parameters
-
-        elif not re.match('^\d+$', parameters):
-            sendError(sDialog, 5)  #format error
-
-        elif (int(parameters) < 0 and int(parameters) > imgParams.imgQty):
-            sendError(sDialog, 10)
-        else:
-            images = b''
-            for i in range(int(parameters)):
-                #Solamente el hash entre el tamaño y la imagen porque ya se sabe lo que mide el campo de la imagen 
-                image = apiRequest(imgParams.imgStart)
-                images += str(len(image)).encode('us-ascii') + ENCODED_HASH + image 
-                imgParams.imgStart += timedelta(days=1)
-            sDialog.sendall("OK".encode('us-ascii') + images)
+        toSend = attendQTY(parameters)
     else:
         #COMMAND NOT FOUND ERR-2
-        sendError(sDialog, 2)
+        toSend = getError(2)
+    sDialog.sendall(toSend)
 
-
-def sendImages(qty):
-    pass
-    #si todo correcto
+def getImage(justOneImg):
+    #Solamente el hash entre el tamaño y la imagen porque ya se sabe lo que mide el campo de la imagen 
+    image = apiRequest(imgParams.imgStart, justOneImg)
+    imgParams.imgStart += timedelta(days=1)
+    return str(len(image)).encode('us-ascii') + ENCODED_HASH + image 
     
-
-
-def attendDir(sDialog, dirParam):
+def attendDIR(dirParam):
+    toSend = b''
     #Comprobar tamano
     if (len(dirParam)!=11):
-        sendError(sDialog,5)
+        getError(sDialog,5)
     declination = dirParam[:5]  #5 digitos
     ascension = dirParam[5:]  #6 digitos
     if re.match('^[+-]\d{4}', declination) and re.match('^/d{6}', ascension):
         numDec = float(declination[1:3] + '.' + declination[3:])
         if numDec<0 and numDec>90:
-            sendError(sDialog, 5)
+            toSend = getError(5)
         try:
             hour = datetime.strptime(ascension,'%H%M%S')
         except ValueError:
-            sendError(sDialog, 5)
+            toSend = getError(5)
     else:
         #ERROR
-        sendError(sDialog, 5)
+        toSend = getError(5)
+    return toSend
 
-
-def attendIMG(sDialog, parameters):
+def attendIMG(parameters):
     value = re.match('^(\d{14})$|^(\d{28})$', parameters)
     if value:
         value = value.group(0)
@@ -129,43 +112,70 @@ def attendIMG(sDialog, parameters):
                 imgParams.imgSent = True
                 toSend = f'OK{imgParams.imgQty}\r\n'.encode('us-ascii')
             else:
-                img = apiRequest(date1)
-#                toSend = "OK".encode('us-ascii') + str(len(img)).encode('us-ascii') + ENCODED_HASH + img + "\r\n".encode('us-ascii')
+                img = apiRequest(date1, True)
                 toSend = "OK".encode('us-ascii') + str(len(img)).encode('us-ascii') + ENCODED_HASH + img
-            
-            print(toSend)
-            sDialog.sendall(toSend)
-            print("enviado")
         except ValueError:
-            print("Te envio un error")
             #ERROR DE FORMATO
-            sendError(sDialog, 5)
+            toSend = getError(5)
     else:
         if parameters:
-            sendError(sDialog,5)
+            toSend = getError(5)
         else:
-            sendError(sDialog,4)
+            toSend = getError(4)
+    return toSend
 
-def sendError(sDialog, errorNum):
-    print("Ha llegado al error")
-    sDialog.sendall(f"ER{errorNum}\r\n".encode('us-ascii')) 
+def attendQTY(parameters):
+     #Peti a la api
+    if not imgParams.imgSent:
+        toSend = getError(1)  #not previous query for IMG
+    elif not parameters:
+        toSend = getError(4)  #no parameters
+    elif not re.match('^\d+$', parameters):
+        toSend = getError(5)  #format error
+    elif (int(parameters) < 0 and int(parameters) > imgParams.imgQty):
+        toSend = getError(10)
+    else:
+        toSend += "OK".encode('us-ascii')
+        justOneImg = True if (int(parameters) == 1) else False
+        for i in range(int(parameters)):
+            toSend += getImage(justOneImg)
+        if justOneImg:
+            toSend += "\r\n".encode('us-ascii')
+    return toSend
 
-def apiRequest(photoDate):
-    response = requests.get(f"{API_URL}&date={imgParams.imgStart.strftime('%Y-%m-%d')}")
-    if(response.status_code == 200):
-        try:
-            info = json.loads(response.text)
-            print(info)
-            if(info["media_type"] == "image"):
-                print(info["url"])
-                response = requests.get(info["url"])
-            else:
-                sendError(9)
-        except ValueError:
-            sendError(9)
-        img = b''
-        for chunk in response.iter_content():
-            img += chunk
-    return img
+def attendTME(parameters):
+    return 'WORK IN PROGRESS'.encode('us-ascii')
+
+def getError(errorNum):
+    return f"ER{errorNum}\r\n".encode('us-ascii') 
+
+def apiRequest(photoDate, justOneImg):
+    toSend = b''
+    deltaSeconds = (photoDate - MIN_DATE).total_seconds()
+    if deltaSeconds >= 0:
+        response = requests.get(f"{API_URL}&date={imgParams.imgStart.strftime('%Y-%m-%d')}")
+        if(response.status_code == 200):
+            try:
+                info = json.loads(response.text)
+                if(info["media_type"] == "image"):
+                    response = requests.get(info["url"])
+                    for chunk in response.iter_content():
+                        toSend += chunk
+                else:
+                    if justOneImg:
+                        toSend = getError(9)
+                    else:
+                        toSend = getError(11)
+            except ValueError:
+                if justOneImg:
+                    toSend = getError(9)
+                else:
+                    toSend = getError(11)
+    else:
+        if justOneImg:
+            toSend = getError(8)
+        else:
+            toSend = getError(11)
+    return toSend
 
 main()
