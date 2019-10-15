@@ -1,8 +1,5 @@
-import socket, os, signal
+import socket, os, signal, re, requests, json
 from datetime import datetime, date, timedelta
-import re
-import requests
-import json
 
 API_URL = "https://api.nasa.gov/planetary/apod?api_key=TgLGqLIjepX9U4s5HQHots13dt2TCoDGElpE1Gzd"
 DEFAULT_IMG_URL = "https://apod.nasa.gov/apod/image/9904/surv3_apollo12_big.jpg"
