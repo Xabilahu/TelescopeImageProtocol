@@ -79,9 +79,9 @@ def attendDIR(parameters):
     else :
         declination = parameters[:5]  #5 digitos
         ascension = parameters[5:]  #6 digitos
-        if re.match('[+-]\d{4}', declination) and re.match('/d{6}', ascension):
+        if re.match('[+-]\d{4}', declination) and re.match('\d{6}', ascension):
             numDec = float(declination[1:3] + '.' + declination[3:])
-            if numDec < 0 and numDec > 90:
+            if numDec < 0 or numDec > 90:
                 toSend = getError(5)
             else:
                 toSend = mapDirToDate(declination, ascension)
@@ -110,7 +110,7 @@ def attendIMG(parameters):
             if (len(value) == 28):
                 date2 = datetime.strptime(value[14:], '%Y%m%d%H%M%S')
                 deltaDate = date1 - date2
-                qty = abs(deltaDate.days)+1
+                qty = abs(deltaDate.days)
                 imgParams.imgStart,imgParams.imgEnd = (date1,date2) if deltaDate.total_seconds() < 0 else (date2,date1)
                 imgParams.imgQty = qty
                 imgParams.imgSent = True
