@@ -67,10 +67,10 @@ def attendRequest(sDialog, request):
 
 def getImage(justOneImg):
     #Solamente el hash entre el tamaño y la imagen porque ya se sabe lo que mide el campo de la imagen 
-    image = apiRequest(imgParams.imgStart, justOneImg)
+    image = apiRequest(imgParams.imgStart, justOneImg, False)
     imgParams.imgStart += timedelta(days=1)
     return str(len(image)).encode(CODIFICATION) + ENCODED_HASH + image 
-    
+
 def attendDIR(parameters):
     toSend = b''
     #Comprobar tamano
@@ -116,7 +116,7 @@ def attendIMG(parameters):
                 imgParams.imgSent = True
                 toSend = f'OK{imgParams.imgQty}\r\n'.encode(CODIFICATION)
             else:
-                img = apiRequest(date1, True)
+                img = apiRequest(date1, True, False)
                 toSend = "OK".encode(CODIFICATION) + str(len(img)).encode(CODIFICATION) + ENCODED_HASH + img
         except ValueError:
             #ERROR DE FORMATO
@@ -151,18 +151,26 @@ def attendQTY(parameters):
 def getError(errorNum):
     return f"ER{errorNum}\r\n".encode(CODIFICATION) 
 
-def apiRequest(photoDate, justOneImg):
+def apiRequest(photoDate, justOneImg,isDirRequest):
     toSend = b''
     deltaSeconds = (photoDate - MIN_DATE).total_seconds()
     if deltaSeconds >= 0:
-        response = requests.get(f"{API_URL}&date={imgParams.imgStart.strftime('%Y-%m-%d')}")
+        if isDirRequest:
+            response = requests.get(f"{API_URL}&date={photoDate.strftime('%Y-%m-%d')}")
+        else:
+            response = requests.get(f"{API_URL}&date={imgParams.imgStart.strftime('%Y-%m-%d')}")
         if(response.status_code == 200):
             try:
                 info = json.loads(response.text)
-                if(info["media_type"] == "image"):
+                if isDirRequest:
+                    toSend += "OK".encode(CODIFICATION)
+                elif (info["media_type"] == "image" and not isDirRequest):
                     response = requests.get(info["url"])
                     for chunk in response.iter_content():
                         toSend += chunk
+                elif (info["media_type"] == "video"):
+                    #TODO
+                    pass
                 else:
                     if justOneImg:
                         toSend = getError(9)
@@ -191,7 +199,7 @@ def mapDirToDate(declination, ascension):
         dayPool = (datetime.now() - MIN_DATE).days
         requestedDays = ((float(declination[:3] + '.' + declination[3:])) + 90) / 180 * dayPool
         requestedDate = MIN_DATE + timedelta(days=requestedDays, hours=requestedHours.hour, minutes=requestedHours.minute, seconds=requestedHours.minute)
-        if apiRequest(requestedDate, True).decode(CODIFICATION).startswith('ER'):
+        if apiRequest(requestedDate, True, True).decode(CODIFICATION).startswith('ER'):
             toSend = getError(6)
         else:
             toSend = datetime.strftime(requestedDate, "OK%Y%m%d%H%M%S\r\n").encode(CODIFICATION)
@@ -203,7 +211,7 @@ def mapDateToDir(date):
     try:
         requestedDate = datetime.strptime(date, "%Y%m%d%H%M%S")
         deltaSeconds = (requestedDate - MIN_DATE).total_seconds()
-        if deltaSeconds < 0 or requestedDate > datetime.now() or apiRequest(requestedDate, True).decode(CODIFICATION).startswith('ER'):
+        if deltaSeconds < 0 or requestedDate > datetime.now() or apiRequest(requestedDate, True, True).decode(CODIFICATION).startswith('ER'):
             toSend = getError(7)
         else:
             ascension = date[8:]
@@ -213,10 +221,10 @@ def mapDateToDir(date):
             declination = ('+' if degrees >= 0 else '') + str(round(degrees,2)).replace('.','')
             if len(declination) < 5:
                 declination += '0'
-            toSend = (declination[:5] + ascension).encode(CODIFICATION)
+            toSend = f"OK{(declination[:5] + ascension)}\r\n".encode(CODIFICATION)
     except ValueError:
         toSend = getError(5)
     return toSend
 
 if __name__ == "__main__":
-    main()
+   main()
