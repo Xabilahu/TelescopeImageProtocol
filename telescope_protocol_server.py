@@ -250,7 +250,7 @@ def attendQTY(parameters):
         except ValueError:
             toSend = getError(5)
     elif not imgParams.awaitingQTY:
-        toSend = getError(1)  #Solicitud de imagen si haber realizado QTY
+        toSend = getError(1)  #Solicitud de imagen sin haber realizado QTY
     elif not parameters:
         toSend = getError(4)  #no parameters
     elif not re.match('^\d+$', parameters):
